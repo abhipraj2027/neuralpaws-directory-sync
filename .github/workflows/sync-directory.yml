@@ -1,0 +1,56 @@
+name: Sync AI Tools Directory from Product Hunt
+
+on:
+  schedule:
+    # 06:00 UTC daily = 11:30 AM IST. Product Hunt's day resets at
+    # midnight PT, so this catches the prior US day's full launch list.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (fetch + score, don't write to WordPress)"
+        type: boolean
+        default: false
+      days:
+        description: "Lookback window in days"
+        type: string
+        default: "2"
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run sync
+        env:
+          PH_API_TOKEN: ${{ secrets.PH_API_TOKEN }}
+          WP_BASE_URL: ${{ secrets.WP_BASE_URL }}
+          WP_USERNAME: ${{ secrets.WP_USERNAME }}
+          WP_APP_PASSWORD: ${{ secrets.WP_APP_PASSWORD }}
+          AUTO_PUBLISH_VOTE_THRESHOLD: ${{ vars.AUTO_PUBLISH_VOTE_THRESHOLD || '50' }}
+          MIN_VOTES_TO_LIST: ${{ vars.MIN_VOTES_TO_LIST || '5' }}
+          LOOKBACK_DAYS: ${{ github.event.inputs.days || '2' }}
+        run: |
+          cd src
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python main.py --dry-run
+          else
+            python main.py
+          fi
+
+      - name: Summary
+        if: always()
+        run: echo "Check the 'Run sync' step logs above for the per-tool decision log and final stats line."
